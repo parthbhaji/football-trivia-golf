@@ -153,8 +153,8 @@
   const $ = (id) => document.getElementById(id);
 
   // ---------- helpers ----------
-  const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .replace(/[.'’]/g, "").replace(/\b(jr|sr|ii|iii)\b/g, "").replace(/\s+/g, " ").trim();
+  const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\b(jr|sr|ii|iii)\b\.?/g, "").replace(/[^a-z]/g, "");
   const aliasMap = {};
   Object.entries(D.aliases).forEach(([k, v]) => aliasMap[norm(k)] = v);
 
@@ -169,10 +169,10 @@
   let _all;
   function allNames() {
     if (_all) return _all;
-    const s = new Set();
-    D.categories.forEach((c) => c.players.forEach((p) => s.add(p)));
-    D.extras.forEach((p) => s.add(p));
-    return (_all = [...s].sort((a, b) => a.localeCompare(b)));
+    const m = new Map();  // keyed by loose name so "T.J. Watt" and "T. J. Watt" don't both appear; list spellings win
+    D.categories.forEach((c) => c.players.forEach(([p]) => { if (!m.has(norm(p))) m.set(norm(p), p); }));
+    D.extras.forEach((p) => { if (!m.has(norm(p))) m.set(norm(p), p); });
+    return (_all = [...m.values()].sort((a, b) => a.localeCompare(b)));
   }
 
   function mulberry32(a) {
@@ -194,9 +194,10 @@
     while (holes.length < HOLES) {
       if (!pool.length) { pool = cats.slice(); for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; } }
       const cat = pool.pop();
-      // avoid #1 (too easy): rank from 2..N
+      // pick a rank that exists on the list (ties share a rank), skipping #1 (too easy)
+      const ranks = [...new Set(cat.players.map(([, r]) => r))].filter((r) => r > 1);
       let rank, tries = 0;
-      do { rank = 2 + Math.floor(rand() * (cat.players.length - 1)); tries++; } while (used.has(cat.id + rank) && tries < 20);
+      do { rank = ranks[Math.floor(rand() * ranks.length)]; tries++; } while (used.has(cat.id + rank) && tries < 20);
       used.add(cat.id + rank);
       holes.push({ cat, rank });
     }
@@ -204,10 +205,9 @@
   }
 
   function strokesFor(cat, rank, guessName) {
-    const idx = cat.players.findIndex((p) => norm(p) === norm(guessName));
-    if (idx === -1) return { strokes: MISS, guessRank: null };
-    const diff = Math.abs(idx + 1 - rank);
-    return { strokes: Math.min(MISS, 1 + diff), guessRank: idx + 1 };
+    const hit = cat.players.find(([p]) => norm(p) === norm(guessName));
+    if (!hit) return { strokes: MISS, guessRank: null };
+    return { strokes: Math.min(MISS, 1 + Math.abs(hit[1] - rank)), guessRank: hit[1] };
   }
 
   function label(strokes) {
@@ -279,8 +279,9 @@
   function showHole() {
     const h = state.holes[state.hole];
     $("holeNum").textContent = `Hole ${state.hole + 1} of ${HOLES} · Par ${PAR}`;
+    const tied = h.cat.players.filter(([, r]) => r === h.rank).length > 1;
     $("question").innerHTML = `Who is <b>#${h.rank}</b> all-time in <b>${esc(h.cat.label)}</b>?`;
-    $("listInfo").textContent = `The list goes ${h.cat.players.length} deep.`;
+    $("listInfo").textContent = `The list goes ${h.cat.players.length} deep.${tied ? " This spot is a tie, so any of them counts." : ""}`;
     $("guessArea").classList.remove("hidden");
     $("resultArea").classList.add("hidden");
     $("guess").value = "";
@@ -319,7 +320,7 @@
 
   function revealHole() {
     const h = state.holes[state.hole];
-    const answer = h.cat.players[h.rank - 1];
+    const answer = h.cat.players.filter(([, r]) => r === h.rank).map(([n]) => n).join(" / ");
     const guessedRanks = new Set();
     let html = `<div class="result"><div class="small">#${h.rank} in ${esc(h.cat.label)} is</div>
       <div class="big gold">${esc(answer)}</div>`;
@@ -336,12 +337,12 @@
 
     // leaderboard slice around target and guesses
     const ranks = [h.rank, ...guessedRanks];
-    const lo = Math.max(1, Math.min(...ranks) - 2), hi = Math.min(h.cat.players.length, Math.max(...ranks) + 2);
+    const lo = Math.max(1, Math.min(...ranks) - 2), hi = Math.max(...ranks) + 2;
     let rows = "";
-    for (let r = lo; r <= hi; r++) {
+    h.cat.players.filter(([, r]) => r >= lo && r <= hi).forEach(([n, r]) => {
       const cls = r === h.rank ? "target" : guessedRanks.has(r) ? "guessed" : "";
-      rows += `<tr class="${cls}"><td>#${r}</td><td>${esc(h.cat.players[r - 1])}</td></tr>`;
-    }
+      rows += `<tr class="${cls}"><td>#${r}</td><td>${esc(n)}</td></tr>`;
+    });
     $("board").innerHTML = `<table><thead><tr><th>Rank</th><th>${esc(h.cat.label)}</th></tr></thead><tbody>${rows}</tbody></table>`;
 
     $("guessArea").classList.add("hidden");

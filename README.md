@@ -7,4 +7,4 @@ Strokes = 1 + how many spots away your guess is; off-list guesses cost 12. Par 4
 - **Random round**: new holes every time.
 - **Pass & play**: up to 8 golfers on one device.
 
-Questions live in `data.js` (career totals through the 2025 season). Add a category by appending to `categories`.
+Questions live in `data.js`, built from Wikipedia's NFL career leaders pages (as of Nov 2026). Add a category by appending to `categories`.
