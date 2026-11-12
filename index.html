@@ -106,10 +106,14 @@
       <p class="turn" id="turn"></p>
 
       <div id="guessArea">
-        <label for="guess">Your guess</label>
+        <label for="guess">Your guess (full or last name)</label>
         <input type="text" id="guess" list="names" autocomplete="off" placeholder="Start typing a player…">
         <datalist id="names"></datalist>
         <button id="submitGuess" style="width:100%; margin-top:10px">Swing</button>
+        <div id="pick" class="hidden" style="margin-top:12px">
+          <p class="small" id="pickMsg"></p>
+          <div class="chips" id="pickChoices"></div>
+        </div>
       </div>
 
       <div id="resultArea" class="hidden">
@@ -158,12 +162,22 @@
   const aliasMap = {};
   Object.entries(D.aliases).forEach(([k, v]) => aliasMap[norm(k)] = v);
 
-  function canonical(input) {
+  // last name of a full name, ignoring Jr./Sr.: "Steve Smith Sr." -> "smith"
+  const lastName = (p) => norm(p.replace(/\b(jr|sr|ii|iii)\b\.?/gi, "").trim().split(/\s+/).pop());
+
+  // Returns {name} for a resolved guess, or {choices: [...]} when a last name matches several players.
+  // Last names are matched against every known player (not just this hole's list) so it never leaks who's on the list.
+  function resolveGuess(input) {
     const n = norm(input);
     if (!n) return null;
-    if (aliasMap[n]) return aliasMap[n];
+    if (aliasMap[n]) return { name: aliasMap[n] };
     const all = allNames();
-    return all.find((p) => norm(p) === n) || input.trim();
+    const full = all.find((p) => norm(p) === n);
+    if (full) return { name: full };
+    const byLast = all.filter((p) => lastName(p) === n);
+    if (byLast.length === 1) return { name: byLast[0] };
+    if (byLast.length > 1) return { choices: byLast };
+    return { name: input.trim() };
   }
 
   let _all;
@@ -285,6 +299,7 @@
     $("guessArea").classList.remove("hidden");
     $("resultArea").classList.add("hidden");
     $("guess").value = "";
+    hidePicker();
     showTurn();
     renderScorecard($("scorecard"));
     setTimeout(() => $("guess").focus(), 50);
@@ -301,7 +316,10 @@
   function submitGuess() {
     const raw = $("guess").value;
     if (!raw.trim()) { $("guess").focus(); return; }
-    const name = canonical(raw);
+    const g = resolveGuess(raw);
+    if (g.choices) return showPicker(raw.trim(), g.choices);
+    hidePicker();
+    const name = g.name;
     const h = state.holes[state.hole];
     const r = strokesFor(h.cat, h.rank, name);
     state.scores[state.turn].push(r.strokes);
@@ -353,6 +371,17 @@
     // focus after the Enter key that submitted the guess has finished, so it doesn't also click "Next hole"
     setTimeout(() => $("nextHole").focus(), 300);
   }
+
+  function showPicker(typed, choices) {
+    $("pickMsg").textContent = `More than one "${typed}". Which one?`;
+    $("pickChoices").innerHTML = choices.map((c) => `<button class="secondary chip" data-name="${esc(c)}">${esc(c)}</button>`).join("");
+    $("pick").classList.remove("hidden");
+  }
+  function hidePicker() { $("pick").classList.add("hidden"); $("pickChoices").innerHTML = ""; }
+  $("pickChoices").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    $("guess").value = b.dataset.name; submitGuess();
+  });
 
   $("submitGuess").addEventListener("click", submitGuess);
   $("guess").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.repeat) { e.preventDefault(); submitGuess(); } });
