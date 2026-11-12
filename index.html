@@ -61,6 +61,15 @@
   .tee .t-sub { font-size: 13px; color: var(--accent); font-weight: 600; }
   .tee .t-desc { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
   .tee .t-icon { font-size: 26px; }
+  body.playing .tee .t-desc, body.playing .tee .t-icon { display: none; }
+  body.playing .tee { padding: 10px 12px; }
+  body.playing #teesCard h2 { display: none; }
+  canvas#course { display: block; width: 100%; aspect-ratio: 16 / 9; image-rendering: pixelated; image-rendering: crisp-edges;
+    border-radius: 12px; border: 1px solid var(--line); background: #7ec8f0; cursor: pointer; margin-bottom: 4px; }
+  .tap-hint { font-size: 11px; color: var(--muted); text-align: right; margin-bottom: 8px; }
+  #results.pending, #board.pending { opacity: 0; }
+  #results, #board { transition: opacity .35s ease; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
   pre.share { white-space: pre-wrap; background: #0f2619; border: 1px solid var(--line); border-radius: 10px; padding: 12px;
     font-size: 14px; margin-top: 10px; font-family: inherit; }
 </style>
@@ -69,27 +78,27 @@
 <div class="wrap">
   <h1>⛳🏈 Football Trivia Golf</h1>
   <p class="tag">Name the player at that spot on the all-time list. Fewest strokes wins.</p>
+  <div class="card" id="teesCard">
+    <h2>Game mode</h2>
+    <div class="tees" id="tees">
+      <button class="tee on" data-tees="rookie">
+        <div class="t-icon">🟢</div>
+        <div class="t-name">Rookie Tees</div>
+        <div class="t-sub">Top 25 only</div>
+        <div class="t-desc">Big names you've heard of. Par 4.</div>
+      </button>
+      <button class="tee" data-tees="hof">
+        <div class="t-icon">🏆</div>
+        <div class="t-name">Hall of Fame Tees</div>
+        <div class="t-sub">The whole list</div>
+        <div class="t-desc">Deep cuts, all the way down. Par 5.</div>
+      </button>
+    </div>
+  </div>
+
 
   <!-- SETUP -->
   <section id="setup">
-    <div class="card">
-      <h2>Pick your tees</h2>
-      <div class="tees" id="tees">
-        <button class="tee on" data-tees="rookie">
-          <div class="t-icon">🟢</div>
-          <div class="t-name">Rookie Tees</div>
-          <div class="t-sub">Top 25 only</div>
-          <div class="t-desc">Big names you've heard of. Par 4.</div>
-        </button>
-        <button class="tee" data-tees="hof">
-          <div class="t-icon">🏆</div>
-          <div class="t-name">Hall of Fame Tees</div>
-          <div class="t-sub">The whole list</div>
-          <div class="t-desc">Deep cuts, all the way down. Par 5.</div>
-        </button>
-      </div>
-    </div>
-
     <div class="card">
       <h2>How to play</h2>
       <ul class="rules" id="rules"></ul>
@@ -137,6 +146,8 @@
       </div>
 
       <div id="resultArea" class="hidden">
+        <canvas id="course" width="160" height="90" aria-label="Golf shot animation"></canvas>
+        <div class="tap-hint" id="tapHint">Tap to skip</div>
         <div id="results"></div>
         <div class="board scroll" id="board"></div>
         <button id="nextHole" style="width:100%; margin-top:14px">Next hole</button>
@@ -170,6 +181,7 @@
 </div>
 
 <script src="data.js"></script>
+<script src="anim.js"></script>
 <script>
 (function () {
   const D = window.TG_DATA;
@@ -286,14 +298,19 @@
       <li>A player who isn't on that list costs <b>${t.miss} strokes</b> (the max on any hole).</li>
       <li>Par is ${t.par} per hole, ${t.par * HOLES} for the round. Lowest total wins.</li>`;
   }
-  function pickTees(t, updateUrl) {
+  function roundInProgress() { return state && !$("play").classList.contains("hidden"); }
+  function pickTees(t) {
+    if (TEES[t] && t !== tees && roundInProgress()) {
+      if (!confirm(`Switch to ${TEES[t].name}? Your current round will end.`)) return;
+      document.body.classList.remove("playing");
+      $("play").classList.add("hidden"); $("end").classList.add("hidden"); $("setup").classList.remove("hidden");
+    }
     setTees(t);
     [...$("tees").children].forEach((x) => x.classList.toggle("on", x.dataset.tees === tees));
     renderRules();
-    if (updateUrl) { try { history.replaceState(null, "", "?tees=" + tees); } catch (e) {} }
   }
-  $("tees").addEventListener("click", (e) => { const b = e.target.closest(".tee"); if (b) pickTees(b.dataset.tees, true); });
-  pickTees(new URLSearchParams(location.search).get("tees") || "rookie", false);
+  $("tees").addEventListener("click", (e) => { const b = e.target.closest(".tee"); if (b) pickTees(b.dataset.tees); });
+  pickTees("rookie");
 
   $("modeSeg").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
@@ -333,6 +350,7 @@
       hole: 0, turn: 0,
     };
     $("setup").classList.add("hidden"); $("end").classList.add("hidden"); $("play").classList.remove("hidden");
+    document.body.classList.add("playing");
     showHole();
   });
 
@@ -383,6 +401,27 @@
     revealHole();
   }
 
+  // golfer shirt colors (one per player); also used for the dots next to each result
+  const COLORS = ["#f2c94c", "#ff6b6b", "#7cc7ff", "#c58cff", "#ff9f43", "#ffffff", "#6fdc8c", "#ff8ad8"];
+  let anim = null;
+  function playShots(h) {
+    if (anim) anim.skip();
+    const shots = state.names.map((_, i) => {
+      const g = state.guesses[i][state.hole];
+      const outcome = g.strokes === 1 ? "ace" : g.guessRank === null ? "water" : g.guessRank < h.rank ? "long" : "short";
+      return { color: COLORS[i % COLORS.length], outcome, frac: (g.strokes - 1) / (MISS - 1) };
+    });
+    $("results").classList.add("pending"); $("board").classList.add("pending");
+    $("tapHint").textContent = "Tap to skip";
+    if (!window.TGAnim) return showText();
+    anim = TGAnim.play($("course"), shots);
+    anim.done.then(showText);
+    function showText() {
+      $("results").classList.remove("pending"); $("board").classList.remove("pending");
+      $("tapHint").textContent = "";
+    }
+  }
+
   function revealHole() {
     const h = state.holes[state.hole];
     const answer = h.cat.players.filter(([, r]) => r === h.rank).map(([n]) => n).join(" / ");
@@ -394,7 +433,7 @@
       const [lbl, cls] = label(g.strokes);
       if (g.guessRank) guessedRanks.add(g.guessRank);
       const where = g.guessRank ? `is #${g.guessRank}` : "isn't on this list";
-      html += `<div style="margin-top:8px">${state.names.length > 1 ? "<b>" + esc(n) + "</b>: " : ""}${esc(g.name)} ${where} →
+      html += `<div style="margin-top:8px"><span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>${state.names.length > 1 ? "<b>" + esc(n) + "</b>: " : ""}${esc(g.name)} ${where} →
         <span class="${cls}"><b>${g.strokes} stroke${g.strokes === 1 ? "" : "s"}</b> · ${lbl}</span></div>`;
     });
     html += "</div>";
@@ -415,6 +454,7 @@
     $("turn").textContent = "";
     $("nextHole").textContent = state.hole === HOLES - 1 ? "See final scores" : "Next hole";
     renderScorecard($("scorecard"));
+    playShots(h);
     // focus after the Enter key that submitted the guess has finished, so it doesn't also click "Next hole"
     setTimeout(() => $("nextHole").focus(), 300);
   }
@@ -433,6 +473,7 @@
   $("submitGuess").addEventListener("click", submitGuess);
   $("guess").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.repeat) { e.preventDefault(); submitGuess(); } });
   $("nextHole").addEventListener("click", () => {
+    if (anim) { anim.skip(); anim = null; }
     state.hole++; state.turn = 0;
     if (state.hole >= HOLES) return finish();
     showHole();
@@ -455,6 +496,7 @@
   // ---------- end ----------
   function finish() {
     $("play").classList.add("hidden"); $("end").classList.remove("hidden");
+    document.body.classList.remove("playing");
     const totals = state.names.map((n, i) => ({ n, t: state.scores[i].reduce((a, b) => a + b, 0), i }))
       .sort((a, b) => a.t - b.t);
     $("final").innerHTML = totals.map((x, k) =>
@@ -462,7 +504,7 @@
     const t = TEES[state.tees];
     const title = `Football Trivia Golf · ${t.icon} ${t.short} · ${state.mode === "daily" ? state.day : "Random round"}`;
     const lines = totals.map((x) => `${state.names.length > 1 ? x.n + ": " : ""}${x.t} (${fmtToPar(x.t - PAR * HOLES)}) ${state.scores[x.i].map(emoji).join("")}`);
-    $("shareText").textContent = `${title}\n${lines.join("\n")}\n${location.origin + location.pathname}?tees=${state.tees}`;
+    $("shareText").textContent = `${title}\n${lines.join("\n")}\n${location.origin + location.pathname}`;
     state.hole = HOLES;
     renderScorecard($("finalScorecard"));
   }
