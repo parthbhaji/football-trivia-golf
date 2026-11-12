@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Football Trivia Golf</title>
+<meta name="description" content="Guess the player at a given spot on an NFL career leaderboard. Closest guess wins. Lowest score wins.">
+<style>
+  :root {
+    --bg: #0d1f14; --card: #143021; --card2: #1b3d2a; --line: #2a5a3e;
+    --text: #eef6ef; --muted: #9fbfa8; --accent: #f2c94c; --good: #6fdc8c; --bad: #ff8a7a; --ace: #7cc7ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: radial-gradient(ellipse at top, #1d4a30 0%, var(--bg) 60%) fixed; background-color: var(--bg);
+    color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; min-height: 100vh; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 30px; letter-spacing: .5px; text-align: center; }
+  .tag { text-align: center; color: var(--muted); margin: 6px 0 22px; font-size: 15px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 2px; color: var(--accent); margin-bottom: 12px; }
+  p.small, .small { font-size: 13px; color: var(--muted); line-height: 1.55; }
+  ul.rules { padding-left: 18px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 6px; }
+  input[type=text] { width: 100%; padding: 13px 14px; border-radius: 10px; border: 1px solid var(--line);
+    background: #0f2619; color: var(--text); font-size: 16px; outline: none; }
+  input[type=text]:focus { border-color: var(--accent); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 140px; }
+  button { cursor: pointer; border: 0; border-radius: 10px; padding: 13px 16px; font-size: 15px; font-weight: 600;
+    background: var(--accent); color: #1a1a1a; }
+  button.secondary { background: var(--card2); color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: default; }
+  .hole-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .hole-num { font-size: 13px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; }
+  .question { font-size: 22px; line-height: 1.35; margin: 4px 0 4px; }
+  .question b { color: var(--accent); }
+  .turn { font-size: 14px; color: var(--good); margin: 10px 0 0; }
+  .result { margin-top: 14px; padding: 14px; border-radius: 12px; background: #0f2619; border: 1px solid var(--line); }
+  .result .big { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+  .ace { color: var(--ace); } .good { color: var(--good); } .bad { color: var(--bad); } .gold { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 6px 6px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  tr.target td { color: var(--accent); font-weight: 700; }
+  tr.guessed td { background: #21492f; }
+  .board { margin-top: 12px; }
+  .score-table td.num, .score-table th.num { text-align: center; }
+  .scroll { overflow-x: auto; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .chip { background: var(--card2); border: 1px solid var(--line); padding: 6px 10px; border-radius: 999px; font-size: 13px; }
+  .chip button { background: none; color: var(--bad); padding: 0 0 0 6px; font-size: 14px; }
+  .hidden { display: none !important; }
+  .footer { text-align: center; font-size: 12px; color: var(--muted); margin-top: 24px; line-height: 1.6; }
+  .seg { display: flex; background: #0f2619; border: 1px solid var(--line); border-radius: 10px; padding: 4px; gap: 4px; }
+  .seg button { flex: 1; background: transparent; color: var(--muted); padding: 10px; }
+  .seg button.on { background: var(--card2); color: var(--text); }
+  pre.share { white-space: pre-wrap; background: #0f2619; border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+    font-size: 14px; margin-top: 10px; font-family: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⛳🏈 Football Trivia Golf</h1>
+  <p class="tag">Name the player at that spot on the all-time list. Fewest strokes wins.</p>
+
+  <!-- SETUP -->
+  <section id="setup">
+    <div class="card">
+      <h2>How to play</h2>
+      <ul class="rules">
+        <li>9 holes. Each hole asks for a spot on an NFL career list, like <i>"Who is #23 in career rushing yards?"</i></li>
+        <li>Guess any player. Strokes = <b>1 + how many spots away</b> your player is. Exact = hole in one.</li>
+        <li>A player who isn't on that list costs <b>12 strokes</b> (the max on any hole).</li>
+        <li>Par is 4 per hole, 36 for the round. Lowest total wins.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Course</h2>
+      <div class="seg" id="modeSeg">
+        <button data-mode="daily" class="on">Daily course</button>
+        <button data-mode="random">Random round</button>
+      </div>
+      <p class="small" id="modeHelp" style="margin-top:10px">Everyone gets the same 9 holes today, so you can compare scores with friends.</p>
+
+      <h2 style="margin-top:20px">Golfers</h2>
+      <div class="row">
+        <input type="text" id="playerName" placeholder="Name (optional)" maxlength="20">
+        <button class="secondary" id="addPlayer" style="flex:0 0 auto">+ Add golfer</button>
+      </div>
+      <p class="small" style="margin-top:8px">Playing together on one phone? Add each friend and pass it around. Playing alone? Just hit Tee off.</p>
+      <div class="chips" id="playerChips"></div>
+      <button id="start" style="width:100%; margin-top:18px">Tee off</button>
+    </div>
+  </section>
+
+  <!-- PLAY -->
+  <section id="play" class="hidden">
+    <div class="card">
+      <div class="hole-head">
+        <span class="hole-num" id="holeNum">Hole 1 of 9 · Par 4</span>
+        <span class="hole-num" id="runningScore"></span>
+      </div>
+      <div class="question" id="question"></div>
+      <p class="small" id="listInfo"></p>
+      <p class="turn" id="turn"></p>
+
+      <div id="guessArea">
+        <label for="guess">Your guess</label>
+        <input type="text" id="guess" list="names" autocomplete="off" placeholder="Start typing a player…">
+        <datalist id="names"></datalist>
+        <button id="submitGuess" style="width:100%; margin-top:10px">Swing</button>
+      </div>
+
+      <div id="resultArea" class="hidden">
+        <div id="results"></div>
+        <div class="board scroll" id="board"></div>
+        <button id="nextHole" style="width:100%; margin-top:14px">Next hole</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Scorecard</h2>
+      <div class="scroll" id="scorecard"></div>
+    </div>
+  </section>
+
+  <!-- END -->
+  <section id="end" class="hidden">
+    <div class="card">
+      <h2>Final scores</h2>
+      <div id="final"></div>
+      <pre class="share" id="shareText"></pre>
+      <div class="row" style="margin-top:12px">
+        <button id="copyShare">Copy result</button>
+        <button class="secondary" id="playAgain">Play again</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Scorecard</h2>
+      <div class="scroll" id="finalScorecard"></div>
+    </div>
+  </section>
+
+  <p class="footer" id="footer"></p>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  const D = window.TG_DATA;
+  const HOLES = 9, PAR = 4, MISS = 12;
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- helpers ----------
+  const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[.'’]/g, "").replace(/\b(jr|sr|ii|iii)\b/g, "").replace(/\s+/g, " ").trim();
+  const aliasMap = {};
+  Object.entries(D.aliases).forEach(([k, v]) => aliasMap[norm(k)] = v);
+
+  function canonical(input) {
+    const n = norm(input);
+    if (!n) return null;
+    if (aliasMap[n]) return aliasMap[n];
+    const all = allNames();
+    return all.find((p) => norm(p) === n) || input.trim();
+  }
+
+  let _all;
+  function allNames() {
+    if (_all) return _all;
+    const s = new Set();
+    D.categories.forEach((c) => c.players.forEach((p) => s.add(p)));
+    D.extras.forEach((p) => s.add(p));
+    return (_all = [...s].sort((a, b) => a.localeCompare(b)));
+  }
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hashStr(s) { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function todayKey() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+
+  function buildCourse(rand) {
+    const cats = D.categories.slice();
+    const holes = [];
+    const used = new Set();
+    let pool = [];
+    while (holes.length < HOLES) {
+      if (!pool.length) { pool = cats.slice(); for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; } }
+      const cat = pool.pop();
+      // avoid #1 (too easy): rank from 2..N
+      let rank, tries = 0;
+      do { rank = 2 + Math.floor(rand() * (cat.players.length - 1)); tries++; } while (used.has(cat.id + rank) && tries < 20);
+      used.add(cat.id + rank);
+      holes.push({ cat, rank });
+    }
+    return holes;
+  }
+
+  function strokesFor(cat, rank, guessName) {
+    const idx = cat.players.findIndex((p) => norm(p) === norm(guessName));
+    if (idx === -1) return { strokes: MISS, guessRank: null };
+    const diff = Math.abs(idx + 1 - rank);
+    return { strokes: Math.min(MISS, 1 + diff), guessRank: idx + 1 };
+  }
+
+  function label(strokes) {
+    const d = strokes - PAR;
+    if (strokes === 1) return ["Hole in one! 🎯", "ace"];
+    if (d <= -2) return ["Eagle 🦅", "good"];
+    if (d === -1) return ["Birdie 🐦", "good"];
+    if (d === 0) return ["Par", "gold"];
+    if (d === 1) return ["Bogey", "bad"];
+    if (d === 2) return ["Double bogey", "bad"];
+    return ["+" + d + " 😬", "bad"];
+  }
+  const emoji = (s) => s === 1 ? "🎯" : s < PAR ? "🟩" : s === PAR ? "🟨" : s <= PAR + 2 ? "🟧" : "🟥";
+  const fmtToPar = (n) => n === 0 ? "E" : (n > 0 ? "+" + n : "" + n);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // ---------- state ----------
+  let mode = "daily";
+  let players = [];
+  let state = null;
+
+  // populate autocomplete
+  $("names").innerHTML = allNames().map((n) => `<option value="${esc(n)}">`).join("");
+  $("footer").innerHTML = `Career totals ${esc(D.asOf)}. Lists: ${D.categories.map((c) => esc(c.label) + " (top " + c.players.length + ")").join(" · ")}.`;
+
+  // ---------- setup ----------
+  $("modeSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    mode = b.dataset.mode;
+    [...$("modeSeg").children].forEach((x) => x.classList.toggle("on", x === b));
+    $("modeHelp").textContent = mode === "daily"
+      ? "Everyone gets the same 9 holes today, so you can compare scores with friends."
+      : "A fresh random set of 9 holes every time you play.";
+  });
+
+  function renderChips() {
+    $("playerChips").innerHTML = players.map((p, i) =>
+      `<span class="chip">${esc(p)}<button data-i="${i}" aria-label="Remove">×</button></span>`).join("");
+  }
+  $("playerChips").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    players.splice(+b.dataset.i, 1); renderChips();
+  });
+  function addPlayer() {
+    const n = $("playerName").value.trim();
+    if (!n) return;
+    if (players.length >= 8) return;
+    players.push(n); $("playerName").value = ""; renderChips(); $("playerName").focus();
+  }
+  $("addPlayer").addEventListener("click", addPlayer);
+  $("playerName").addEventListener("keydown", (e) => { if (e.key === "Enter") addPlayer(); });
+
+  $("start").addEventListener("click", () => {
+    const pending = $("playerName").value.trim();
+    if (pending) addPlayer();
+    const names = players.length ? players.slice() : ["You"];
+    const seed = mode === "daily" ? hashStr("tg-" + todayKey()) : (Math.random() * 2 ** 32) >>> 0;
+    state = {
+      mode, day: todayKey(), names,
+      holes: buildCourse(mulberry32(seed)),
+      scores: names.map(() => []), guesses: names.map(() => []),
+      hole: 0, turn: 0,
+    };
+    $("setup").classList.add("hidden"); $("end").classList.add("hidden"); $("play").classList.remove("hidden");
+    showHole();
+  });
+
+  // ---------- play ----------
+  function showHole() {
+    const h = state.holes[state.hole];
+    $("holeNum").textContent = `Hole ${state.hole + 1} of ${HOLES} · Par ${PAR}`;
+    $("question").innerHTML = `Who is <b>#${h.rank}</b> all-time in <b>${esc(h.cat.label)}</b>?`;
+    $("listInfo").textContent = `The list goes ${h.cat.players.length} deep.`;
+    $("guessArea").classList.remove("hidden");
+    $("resultArea").classList.add("hidden");
+    $("guess").value = "";
+    showTurn();
+    renderScorecard($("scorecard"));
+    setTimeout(() => $("guess").focus(), 50);
+  }
+
+  function showTurn() {
+    const multi = state.names.length > 1;
+    $("turn").textContent = multi ? `🏌️ ${state.names[state.turn]}'s swing (no peeking, everyone else)` : "";
+    const tot = state.scores[state.turn].reduce((a, b) => a + b, 0);
+    const played = state.scores[state.turn].length;
+    $("runningScore").textContent = played ? `${multi ? state.names[state.turn] + ": " : ""}${fmtToPar(tot - PAR * played)}` : "";
+  }
+
+  function submitGuess() {
+    const raw = $("guess").value;
+    if (!raw.trim()) { $("guess").focus(); return; }
+    const name = canonical(raw);
+    const h = state.holes[state.hole];
+    const r = strokesFor(h.cat, h.rank, name);
+    state.scores[state.turn].push(r.strokes);
+    state.guesses[state.turn].push({ name, guessRank: r.guessRank, strokes: r.strokes });
+
+    if (state.turn < state.names.length - 1) {
+      state.turn++;
+      $("guess").value = "";
+      showTurn();
+      renderScorecard($("scorecard"));
+      $("guess").focus();
+      return;
+    }
+    revealHole();
+  }
+
+  function revealHole() {
+    const h = state.holes[state.hole];
+    const answer = h.cat.players[h.rank - 1];
+    const guessedRanks = new Set();
+    let html = `<div class="result"><div class="small">#${h.rank} in ${esc(h.cat.label)} is</div>
+      <div class="big gold">${esc(answer)}</div>`;
+    state.names.forEach((n, i) => {
+      const g = state.guesses[i][state.hole];
+      const [lbl, cls] = label(g.strokes);
+      if (g.guessRank) guessedRanks.add(g.guessRank);
+      const where = g.guessRank ? `is #${g.guessRank}` : "isn't on this list";
+      html += `<div style="margin-top:8px">${state.names.length > 1 ? "<b>" + esc(n) + "</b>: " : ""}${esc(g.name)} ${where} →
+        <span class="${cls}"><b>${g.strokes} stroke${g.strokes === 1 ? "" : "s"}</b> · ${lbl}</span></div>`;
+    });
+    html += "</div>";
+    $("results").innerHTML = html;
+
+    // leaderboard slice around target and guesses
+    const ranks = [h.rank, ...guessedRanks];
+    const lo = Math.max(1, Math.min(...ranks) - 2), hi = Math.min(h.cat.players.length, Math.max(...ranks) + 2);
+    let rows = "";
+    for (let r = lo; r <= hi; r++) {
+      const cls = r === h.rank ? "target" : guessedRanks.has(r) ? "guessed" : "";
+      rows += `<tr class="${cls}"><td>#${r}</td><td>${esc(h.cat.players[r - 1])}</td></tr>`;
+    }
+    $("board").innerHTML = `<table><thead><tr><th>Rank</th><th>${esc(h.cat.label)}</th></tr></thead><tbody>${rows}</tbody></table>`;
+
+    $("guessArea").classList.add("hidden");
+    $("resultArea").classList.remove("hidden");
+    $("turn").textContent = "";
+    $("nextHole").textContent = state.hole === HOLES - 1 ? "See final scores" : "Next hole";
+    renderScorecard($("scorecard"));
+    // focus after the Enter key that submitted the guess has finished, so it doesn't also click "Next hole"
+    setTimeout(() => $("nextHole").focus(), 300);
+  }
+
+  $("submitGuess").addEventListener("click", submitGuess);
+  $("guess").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.repeat) { e.preventDefault(); submitGuess(); } });
+  $("nextHole").addEventListener("click", () => {
+    state.hole++; state.turn = 0;
+    if (state.hole >= HOLES) return finish();
+    showHole();
+  });
+
+  function renderScorecard(el) {
+    let head = `<tr><th>Golfer</th>${state.holes.map((_, i) => `<th class="num">${i + 1}</th>`).join("")}<th class="num">Tot</th><th class="num">±</th></tr>`;
+    let body = state.names.map((n, pi) => {
+      const s = state.scores[pi];
+      // hide strokes for the current hole until it's revealed
+      const visible = s.map((v, i) => (i === state.hole && !$("guessArea").classList.contains("hidden") && state.hole < HOLES) ? "•" : v);
+      const shown = s.filter((_, i) => visible[i] !== "•");
+      const tot = shown.reduce((a, b) => a + b, 0);
+      const cells = state.holes.map((_, i) => `<td class="num">${visible[i] ?? ""}</td>`).join("");
+      return `<tr><td>${esc(n)}</td>${cells}<td class="num"><b>${shown.length ? tot : ""}</b></td><td class="num">${shown.length ? fmtToPar(tot - PAR * shown.length) : ""}</td></tr>`;
+    }).join("");
+    el.innerHTML = `<table class="score-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  }
+
+  // ---------- end ----------
+  function finish() {
+    $("play").classList.add("hidden"); $("end").classList.remove("hidden");
+    const totals = state.names.map((n, i) => ({ n, t: state.scores[i].reduce((a, b) => a + b, 0), i }))
+      .sort((a, b) => a.t - b.t);
+    $("final").innerHTML = totals.map((x, k) =>
+      `<div style="font-size:${k === 0 ? 22 : 17}px; margin:6px 0">${k === 0 ? "🏆 " : (k + 1) + ". "}<b>${esc(x.n)}</b> — ${x.t} strokes (${fmtToPar(x.t - PAR * HOLES)})</div>`).join("");
+    const title = state.mode === "daily" ? `Football Trivia Golf · ${state.day}` : "Football Trivia Golf · Random round";
+    const lines = totals.map((x) => `${state.names.length > 1 ? x.n + ": " : ""}${x.t} (${fmtToPar(x.t - PAR * HOLES)}) ${state.scores[x.i].map(emoji).join("")}`);
+    $("shareText").textContent = `${title}\n${lines.join("\n")}\n${location.href.split("#")[0]}`;
+    state.hole = HOLES;
+    renderScorecard($("finalScorecard"));
+  }
+
+  $("copyShare").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("shareText").textContent); $("copyShare").textContent = "Copied!"; }
+    catch { $("copyShare").textContent = "Select & copy above"; }
+    setTimeout(() => $("copyShare").textContent = "Copy result", 1800);
+  });
+  $("playAgain").addEventListener("click", () => {
+    $("end").classList.add("hidden"); $("setup").classList.remove("hidden");
+  });
+})();
+</script>
+</body>
+</html>
